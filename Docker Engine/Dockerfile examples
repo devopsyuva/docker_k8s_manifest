@@ -1,0 +1,113 @@
+FROM --> Specify parent image that to be used to build custom image
+MAINTAINER --> Optional, to specify Name and email of the auther
+RUN --> Execute command, how we have used in shell of linux
+COPY --> copy files from docker host path to image layer
+WORKDIR --> shift to specific path, as we do with cd command in linux
+LABEL --> add labels to your image to help organize images by project, like version, medata info etc.,
+ENV --> pass environment variable, when we are working with package installation which need some values to be passed
+EXPOSE --> open a port in the container for application running to listen 
+ADD --> Similar action can be performed as COPY, but ADD allows us to some addition functionality like tar download from URL etc., example: ADD http://example.com/big.tar.xz /usr/src/things/
+ENTRYPOINT --> pass utility/command as main command in the image
+CMD --> arguments for the command can be passed here
+VOLUME
+USER --> USER to change to a non-root user
+ONBUILD
+ARG --> The ARG instruction defines a variable that users can pass at build-time to the builder with the docker build command using the --build-arg <varname>=<value> flag
+STOPSIGNAL
+HEALTHCHECK --> Syntax looks like below:
+
+HEALTHCHECK [OPTIONS] CMD command
+
+Example:
+
+HEALTHCHECK CMD curl --fail http://localhost:80/ || exit 1
+
+The options that can appear before CMD are:
+
+--interval=DURATION (default: 30s)
+--timeout=DURATION (default: 30s)
+--start-period=DURATION (default: 0s)
+--retries=N (default: 3)
+
+SHELL --> specify option to pass which shell need to be used to execute some commands
+
+
+
+Reference: https://docs.docker.com/engine/reference/builder/#volume
+
+
+Examples:
+=========
+
+FROM ubuntu:16.04
+MAINTAINER SUDHAMS REDDY DUBA "https://github.com/dubareddy"
+RUN apt-get update
+RUN apt-get install -y openssh-server
+RUN mkdir /var/run/sshd
+RUN echo 'root:root' |chpasswd
+RUN sed -ri 's/^#?PermitRootLogin\s+.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+RUN sed -ri 's/UsePAM yes/#UsePAM yes/g' /etc/ssh/sshd_config
+RUN mkdir /root/.ssh
+RUN apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+EXPOSE 22
+CMD    ["/usr/sbin/sshd", "-D"]
+---
+FROM ubuntu:16.04
+MAINTAINER sudhams reddy duba<dubareddy.383@gmail.com>
+ENV DEBAIN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get install -y iproute nginx curl
+COPY index.html /usr/share/nginx/html/
+VOLUME /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+HEALTHCHECK CMD curl --fail http://localhost:80/ || exit 1
+---
+FROM nginx:1.19.0 AS builder
+MAINTAINER sudhams reddy duba<dubareddy.383@gmail.com>
+COPY index.html /var/www/html/
+
+FROM ubuntu:18.04
+COPY --from=builder /var/www/html/index.html /usr/share/nginx/html/
+CMD ["cat", "/usr/share/nginx/html/index.html"]
+---
+FROM jenkins/jenkins:lts
+MAINTAINER sudhams reddy duba "dubareddy.383@gmail.com"
+ENV JENKINS_USER admin
+ENV JENKINS_PASS admin
+# Skip initial setup
+ENV JAVA_OPTS -Djenkins.install.runSetupWizard=false
+COPY  plugins.txt /usr/share/jenkins/ref/plugins.txt
+RUN /usr/local/bin/install-plugins.sh < /usr/share/jenkins/ref/plugins.txt
+USER jenkins
+
+update/create plugins.txt with list to plugins that you want to install
+
+++
+docker
+kubernetes
+++
+
+Optional:
+
+ENV JENKINS_OPTS --httpPort=-1 --httpsPort=8083 --httpsCertificate=/var/lib/jenkins/cert --httpsPrivateKey=/var/lib/jenkins/pk
+ENV JENKINS_SLAVE_AGENT_PORT 50001
+
+
+File "executers.groovy"
+
+++
+import jenkins.model.*
+Jenkins.instance.setNumExecutors(5)
+++
+
+FROM jenkins/jenkins:lts
+COPY executors.groovy /usr/share/jenkins/ref/init.groovy.d/executors.groovy
+
+
+How to get list of plugins from existing server:
+
+JENKINS_HOST=username:password@myhost.com:port
+curl -sSL "http://$JENKINS_HOST/pluginManager/api/xml?depth=1&xpath=/*/*/shortName|/*/*/version&wrapper=plugins" | perl -pe 's/.*?<shortName>([\w-]+).*?<version>([^<]+)()(<\/\w+>)+/\1 \2\n/g'|sed 's/ /:/'
+
